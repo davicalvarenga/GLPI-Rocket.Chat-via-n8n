@@ -1,0 +1,283 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "name": "Agendamento Diário",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -1488,
+        464
+      ],
+      "id": "a767822d-6e16-4391-8e63-580ceff00a74",
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_IP_DO_GLPI/apirest.php/initSession",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user_token",
+              "value": "SEU_USER_TOKEN_AQUI"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "SEU_APP_TOKEN_AQUI"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "name": "1. Iniciar Sessão GLPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -1280,
+        464
+      ],
+      "id": "e6bf689e-1d1e-4552-9ba4-8712f3d27c20",
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_IP_DO_GLPI/apirest.php/search/Ticket",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "range",
+              "value": "0-3000"
+            },
+            {
+              "name": "forcedisplay[0]",
+              "value": "1"
+            },
+            {
+              "name": "forcedisplay[1]",
+              "value": "12"
+            },
+            {
+              "name": "forcedisplay[2]",
+              "value": "5"
+            },
+            {
+              "name": "sort[0]",
+              "value": "2"
+            },
+            {
+              "name": "order[0]",
+              "value": "DESC"
+            },
+            {
+              "name": "forcedisplay[3]",
+              "value": "80"
+            },
+            {
+              "name": "forcedisplay[4]",
+              "value": "15"
+            },
+            {
+              "name": "forcedisplay[5]",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            },
+            {
+              "name": "App-Token",
+              "value": "SEU_APP_TOKEN_AQUI"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "name": "2. Buscar Chamados",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -1088,
+        464
+      ],
+      "id": "0f6718d1-b336-44e2-8822-55b9912f99d3",
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "jsCode": "const chamadosPorTecnico = {};\n\nconst statusMap = {\n  1: \"Novo\",\n  2: \"Em Atendimento\",\n  3: \"Planejado\",\n  4: \"Pendente\"\n};\n\n// TRADUTOR DE URGÊNCIA (Padrão GLPI)\nconst urgenciaMap = {\n  1: \"⚪ Muito Baixa\",\n  2: \"🟢 Baixa\",\n  3: \"🟡 Média\",\n  4: \"🟠 Alta\",\n  5: \"🔴 Muito Alta\"\n};\n\n// TRADUTOR: ID do GLPI -> Usuário do Rocket.Chat\nconst mapaTecnicos = {\n  '101': 'tecnico.um',\n  '102': 'tecnico.dois',\n  '103': 'tecnico.tres'\n};\n\nconst chamados = $input.first().json.data || [];\nconst hoje = new Date();\n\nfor (const chamado of chamados) {\n  const id = chamado[\"2\"];\n  const titulo = chamado[\"1\"];\n  const empresa = chamado[\"80\"] || \"Empresa não informada\";\n  \n  const status = chamado[\"12\"];\n  // Ignora apenas os que já estão Solucionados (5) ou Fechados (6)\n  if (status == 5 || status == 6) {\n    continue; \n  }\n  \n  // CALCULA OS DIAS ABERTO\n  const dataCriacao = chamado[\"15\"];\n  let diasAberto = 0;\n  \n  if (dataCriacao) {\n    const dataChamado = new Date(dataCriacao);\n    const diferencaTempo = Math.abs(hoje - dataChamado);\n    diasAberto = Math.floor(diferencaTempo / (1000 * 60 * 60 * 24));\n  }\n  \n  // CAPTURAR URGÊNCIA\n  const idUrgencia = chamado[\"10\"]; \n  const urgenciaTraduzida = urgenciaMap[idUrgencia] || \"Não informada\";\n\n  // Identifica o técnico (suportando vários técnicos no mesmo chamado)\n  let tecnicosDoChamado = chamado[\"5\"];\n  if (!tecnicosDoChamado) {\n    tecnicosDoChamado = [];\n  } else if (!Array.isArray(tecnicosDoChamado)) {\n    tecnicosDoChamado = [tecnicosDoChamado];\n  }\n  \n  const statusTraduzido = statusMap[status] || status;\n  \n  for (const idTec of tecnicosDoChamado) {\n    const idLimpo = String(idTec).trim();\n    const tecnicoRocketChat = mapaTecnicos[idLimpo];\n    \n    if (tecnicoRocketChat) {\n      if (!chamadosPorTecnico[tecnicoRocketChat]) {\n        chamadosPorTecnico[tecnicoRocketChat] = [];\n      }\n      \n      chamadosPorTecnico[tecnicoRocketChat].push({\n        id: id,\n        titulo: titulo,\n        empresa: empresa,\n        status: statusTraduzido,\n        urgencia: urgenciaTraduzida,\n        diasAberto: diasAberto       \n      });\n    }\n  }\n}\n\nconst resultados = [];\nfor (const [tecnico, lista] of Object.entries(chamadosPorTecnico)) {\n  if (lista.length > 0) {\n      resultados.push({\n        json: {\n          tecnico: tecnico, \n          quantidade: lista.length,\n          lista_chamados: lista\n        }\n      });\n  }\n}\n\nreturn resultados;"
+      },
+      "name": "3. Agrupar por Técnico",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -896,
+        464
+      ],
+      "id": "2362ecbd-dbec-4178-8da3-5ed5aa6b4674",
+      "typeVersion": 2,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "channel": "=@{{ $('4. Loop de mensagem').item.json.tecnico }}",
+        "text": "Olá, *{{ $json.tecnico }}*! 🚀\n\nVocê tem *{{ $json.quantidade }}* chamado(s) pendente(s) na sua fila. Confira o resumo completo:\n\n---\n{{ $json.lista_chamados.map(c => `🎫 *[#${c.id}]* ${c.titulo}\\n🏢 *Cliente:* ${c.empresa}\\n🚥 *Status:* ${c.status}\\n🚨 *Urgência:* ${c.urgencia}\\n⏳ *Aberto há:* ${c.diasAberto} dia(s)`).join('\\n\\n') }}\n---\n\nBom trabalho e foco nas prioridades! 💪",
+        "options": {},
+        "attachments": []
+      },
+      "name": "6. Enviar Alerta Rocket.Chat",
+      "type": "n8n-nodes-base.rocketchat",
+      "typeVersion": 1,
+      "position": [
+        -352,
+        528
+      ],
+      "id": "dc9b6fb3-662d-4863-8364-0d60573591ce"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -704,
+        464
+      ],
+      "id": "31f45d7b-7a43-4c8b-99fb-d38024511b2f",
+      "name": "4. Loop de mensagem"
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -512,
+        528
+      ],
+      "id": "c12830f6-cfb2-4dfd-bd5a-a9456ffedb38",
+      "name": "5. Esperar um tempo",
+      "webhookId": "6bfe89de-b1b9-468d-b8e8-05b4975f2ab1"
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_IP_DO_GLPI/apirest.php/killSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('1. Iniciar Sessão GLPI').item.json.session_token }}"
+            },
+            {
+              "name": "App-Token",
+              "value": "SEU_APP_TOKEN_AQUI"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "name": "7. Encerrar Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -512,
+        336
+      ],
+      "id": "7424df97-d348-4e3c-8199-6f37d1826f64",
+      "typeVersion": 4.4
+    }
+  ],
+  "connections": {
+    "Agendamento Diário": {
+      "main": [
+        [
+          {
+            "node": "1. Iniciar Sessão GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Iniciar Sessão GLPI": {
+      "main": [
+        [
+          {
+            "node": "2. Buscar Chamados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Buscar Chamados": {
+      "main": [
+        [
+          {
+            "node": "3. Agrupar por Técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Agrupar por Técnico": {
+      "main": [
+        [
+          {
+            "node": "4. Loop de mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Loop de mensagem": {
+      "main": [
+        [
+          {
+            "node": "7. Encerrar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "5. Esperar um tempo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9b11acab14137dbd8606faba2eab88dfc8a234f9eec48aa63b03ee9e3f9d50ea"
+  }
+}
