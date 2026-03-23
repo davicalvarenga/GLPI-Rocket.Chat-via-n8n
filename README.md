@@ -3,7 +3,7 @@
 Uma automação open-source desenvolvida no **n8n** para integrar o sistema de chamados **GLPI** com o **Rocket.Chat**. O objetivo é notificar os técnicos de suporte diariamente com um resumo de seus chamados pendentes via Mensagem Direta (DM).
 
 ## O Problema
-Em operações de TI com alto volume de chamados, é comum que tickets antigos ou com múltiplas atribuições se percam na fila. Entrar no painel do GLPI todos os dias para verificar prioridades consome tempo e prejudica o SLA.
+Em operações de TI com alto volume de chamados, é comum que tickets antigos ou com múltiplas atribuições se percam na fila. Entrar no painel do GLPI todos os dias para verificar prioridades consome tempo e prejudica o SLA (Service Level Agreement/Acordo de Nível de Serviço).
 
 ## A Solução
 Este fluxo do n8n resolve isso de forma proativa:
